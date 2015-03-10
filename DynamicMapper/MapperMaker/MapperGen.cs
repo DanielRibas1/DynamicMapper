@@ -16,6 +16,8 @@ namespace DynamicMapper.MapperMaker
     {
         private Type _inputType = typeof(TInput);
         private Type _outputType = typeof(TOutput);
+
+        private List<CodeMemberMethod> _extraMethods = new List<CodeMemberMethod>();
         
         public ITypeMapper<TInput, TOutput> Make()
         {
@@ -25,6 +27,8 @@ namespace DynamicMapper.MapperMaker
             var unTypedInstance = InstanciateGeneratedClass(compileResult.CompiledAssembly, name);
             return unTypedInstance as ITypeMapper<TInput, TOutput>;            
         }
+
+        #region Create Code
 
         private CodeCompileUnit CreateCode(Type MapperType, string name)
         {
@@ -54,17 +58,6 @@ namespace DynamicMapper.MapperMaker
             return codeUnit;
         }
 
-        private List<string> ExtractAssemblyNamespaces(Assembly assembly)
-        {
-            var namespaceList = new List<string>();
-            var types = assembly.GetTypes();
-            foreach (var type in types)
-                namespaceList.Add(type.Namespace);
-            if (!namespaceList.Any())
-                return namespaceList;
-            return namespaceList.Distinct().ToList();
-        }
-
         private string LinkNames(string inputName, string outputName)
         {
             return String.Format("{0}To{1}", inputName, outputName);
@@ -78,10 +71,7 @@ namespace DynamicMapper.MapperMaker
             var entryParamReference = new CodeVariableReferenceExpression("entry");
             var _outputTypeReference = new CodeTypeReference(output);
             method.ReturnType = _outputTypeReference;
-            method.Attributes = MemberAttributes.Public;
-
-            var inputProperties = input.GetProperties();
-            var outputProperties = output.GetProperties();
+            method.Attributes = MemberAttributes.Public; 
 
             //Symetric Parsing          
                         
@@ -91,22 +81,115 @@ namespace DynamicMapper.MapperMaker
             var createInstaceExpression = new CodeMethodReferenceExpression(new CodeTypeReferenceExpression(typeof(Activator)), "CreateInstance");
             createInstaceExpression.TypeArguments.Add(_outputTypeReference);
             var createInstanceCall = new CodeMethodInvokeExpression(createInstaceExpression);
-            method.Statements.Add(new CodeAssignStatement(outputVarRef, createInstanceCall));   
+            method.Statements.Add(new CodeAssignStatement(outputVarRef, createInstanceCall));
 
-            foreach (var pr in inputProperties)
-            {    
-                var propertyAssignStatement = new CodeAssignStatement(
-                    new CodePropertyReferenceExpression(outputVarRef, pr.Name),
-                    new CodePropertyReferenceExpression(entryParamReference, pr.Name));
-                method.Statements.Add(propertyAssignStatement);
+            if (AreSymetricClasses())
+            {
+                //Symetric Assigment Algorithm
+                var assignStatments = this.MakeAssignsForSymetric(outputVarRef, entryParamReference);
+                method.Statements.AddRange(assignStatments);
             }
+            else
+            {
+                //TODO Asymetric Assigment Algorithm  
+            }
+            
             var returnStatement = new CodeMethodReturnStatement(outputVarRef);
             method.Statements.Add(returnStatement);            
             
-            //TODO Asymetric Parsing                 
+                           
 
             return method;
         }
+
+        #region Symetric Algorithm
+
+        /// <summary>
+        /// Compare if both classes have the same properties names & types
+        /// </summary>
+        /// <returns></returns>
+        private bool AreSymetricClasses()
+        {
+            var inputProperties = _inputType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            var outputProperties = _outputType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            foreach (var inputProperty in inputProperties)
+            {
+                var matchedOutputProperty = _outputType.GetProperty(inputProperty.Name, BindingFlags.Public | BindingFlags.Instance);
+                if (matchedOutputProperty == null)
+                    return false;
+                if (!matchedOutputProperty.PropertyType.Equals(inputProperty.PropertyType))
+                    return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Make a collection of CodeAssigment based on Symetric algorithm
+        /// </summary>
+        /// <param name="outputVarRef">Reference to output code variable</param>
+        /// <param name="entryParamReference">Reference to entry code parameter</param>
+        /// <returns></returns>
+        private CodeAssignStatement[] MakeAssignsForSymetric(CodeVariableReferenceExpression outputVarRef, CodeVariableReferenceExpression entryParamReference)
+        {            
+            var inputProperties = _inputType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            var result = new CodeAssignStatement[inputProperties.Length];
+            for (var i = 0; i < inputProperties.Length; i++)
+            {
+                var propertyInfo = inputProperties[i];
+                var propertyAssignStatement = new CodeAssignStatement(
+                    new CodePropertyReferenceExpression(outputVarRef, propertyInfo.Name),
+                    new CodePropertyReferenceExpression(entryParamReference, propertyInfo.Name));
+                result[i] = propertyAssignStatement;                
+            }
+            return result;
+        }
+
+        #endregion
+
+        private CodeAssignStatement[] MakeAssignsForAsymetric(CodeVariableReferenceExpression outputVarRef, CodeVariableReferenceExpression entryParamReference)
+        {
+            //var inputProperties = _inputType.GetProperties(BindingFlags.Public);
+            var outputProperties = _outputType.GetProperties(BindingFlags.Public);
+            var result = new List<CodeAssignStatement>();
+
+            for (var i = 0; i < outputProperties.Length; i++)
+            {
+                var outputProperty = outputProperties[i];
+                var inputProperty = _inputType.GetProperty(outputProperty.Name, BindingFlags.Public);
+                if (inputProperty == null)
+                    continue;
+                if (inputProperty.PropertyType.Equals(outputProperty.PropertyType))
+                {
+                    var propertyAssignStatement = new CodeAssignStatement(
+                        new CodePropertyReferenceExpression(outputVarRef, inputProperty.Name),
+                        new CodePropertyReferenceExpression(entryParamReference, inputProperty.Name));
+                    result.Add(propertyAssignStatement);
+                }
+                else
+                {
+                    var oPType = outputProperty.PropertyType;
+                    if (oPType == typeof(string))
+                    {
+                        var propertyAssignStatement = new CodeAssignStatement(
+                        new CodePropertyReferenceExpression(outputVarRef, inputProperty.Name),
+                        new CodeMethodInvokeExpression(
+                            new CodePropertyReferenceExpression(entryParamReference, inputProperty.Name),
+                            "ToString"));
+                    }
+                    //else if (oPType.
+                }
+                    
+            }
+
+            throw new NotImplementedException();
+        }
+
+        private CodeAssignStatement MakePrivateInnerType(CodeVariableReferenceExpression outputVarRef)
+        {
+            throw new NotImplementedException();
+        }
+
+        #endregion
 
         #region Compile
 

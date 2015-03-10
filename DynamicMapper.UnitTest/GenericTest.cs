@@ -6,10 +6,10 @@ namespace DynamicMapper.UnitTest
 {
     [TestClass]
     public class GenericTest
-    {
-   
+    {        
         [TestMethod]
-        public void GenericMapperTest()
+        [TestCategory("Symetric Algorithm")]
+        public void SymetricMappingTest()
         {
             var inputEntity = new OriginDTO { Value1 = "Test1", Value2 = "Test2", Value3 = DateTime.Now, Value4 = 6547899m, Value5 = int.MaxValue };
             Stopwatch timewatch = new Stopwatch();
@@ -45,4 +45,5 @@ namespace DynamicMapper.UnitTest
         public decimal Value4 { get; set; }
         public int Value5 { get; set; }
     }
+
 }
