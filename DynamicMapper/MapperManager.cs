@@ -26,27 +26,36 @@ namespace DynamicMapper
 
         private MapperManager() 
         {
-            _store = new MapperStore();
+            _store = new TypedMapperStore();
         }
 
         #endregion
 
-        private MapperStore _store;
+        private TypedMapperStore _store;
 
         public ITypeMapper<TInput, TOutput> GetMapper<TInput, TOutput>()
         {
+            Type mapperType;
             var key = MakeKey<TInput, TOutput>();
             if (_store.Contains(key))
             {
-                return _store.Get<TInput, TOutput>(key);
+                mapperType = _store.Get<TInput, TOutput>(key);
             }
             else
             {
-                var generator = new MapperGen<TInput, TOutput>();
-                var generatedInstance = generator.Make();
-                _store.Put(key, generatedInstance);
-                return generatedInstance;
+                var generator = new MapperTypeGenerator<TInput, TOutput>();
+                mapperType = generator.Make();
+                _store.Put(key, mapperType);                
             }
+            return this.InstanciateType<TInput, TOutput>(mapperType) as ITypeMapper<TInput, TOutput>;
+        }
+
+        private object InstanciateType<TInput, TOutput>(Type mapper)
+        {
+            if (mapper == null)
+                throw new Exception();
+            var instance = Activator.CreateInstance(mapper.MakeGenericType(typeof(TInput), typeof(TOutput)));
+            return instance;
         }
 
         #region Key Maker

@@ -42,12 +42,19 @@
   <ItemGroup>
     <Compile Include="Interfaces\IMapper.cs" />
     <Compile Include="Interfaces\ITypeMapper.cs" />
-    <Compile Include="MapperMaker\MapperGen.cs" />
+    <Compile Include="MapperMaker\CodeCompiler.cs" />
+    <Compile Include="MapperMaker\CodeBuilder.cs" />
+    <Compile Include="MapperMaker\Factories\CodeCompileUnitFactory.cs" />
+    <Compile Include="MapperMaker\Factories\CodeTypeFactory.cs" />
+    <Compile Include="MapperMaker\Factories\CodeMapMethodFactory.cs" />
+    <Compile Include="MapperMaker\MapperTypeGenerator.cs" />
     <Compile Include="MapperManager.cs" />
     <Compile Include="MapperStorage\MapperKey.cs" />
-    <Compile Include="MapperStorage\MapperStore.cs" />
+    <Compile Include="MapperStorage\TypedMapperStore.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="TypeExtensions\TypeExtensions.cs" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

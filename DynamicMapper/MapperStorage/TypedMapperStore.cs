@@ -6,11 +6,11 @@ using DynamicMapper.Interfaces;
 
 namespace DynamicMapper.MapperStorage
 {
-    public class MapperStore
+    public class TypedMapperStore
     {
-        Dictionary<MapperKey, IMapper> _innerStore = new Dictionary<MapperKey, IMapper>();
+        Dictionary<MapperKey, Type> _innerStore = new Dictionary<MapperKey, Type>();
 
-        public void Put(MapperKey key, IMapper mapper)
+        public void Put(MapperKey key, Type mapper)
         {
             if (_innerStore.ContainsKey(key))
                 _innerStore[key] = mapper;
@@ -28,21 +28,11 @@ namespace DynamicMapper.MapperStorage
             return _innerStore.ContainsKey(key);
         }
 
-        public ITypeMapper<TInput, TOutput> Get<TInput, TOutput>(MapperKey key)
+        public Type Get<TInput, TOutput>(MapperKey key)
         {
             if (_innerStore.ContainsKey(key))
             {
-                IMapper simpleMapper = _innerStore[key];
-                try
-                {
-                    var typedMapper = simpleMapper as ITypeMapper<TInput, TOutput>;
-                    return typedMapper;
-                }
-                catch (Exception ex)
-                {
-                    throw;
-                }
-                
+                return _innerStore[key];   
             }
             else
             {
