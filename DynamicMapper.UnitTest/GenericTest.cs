@@ -46,12 +46,27 @@ namespace DynamicMapper.UnitTest
                 timewatch.Reset();
             }   
         }
-    }
 
-    public class GenClass<T1, T2>
-    {
+        [TestMethod]
+        [TestCategory("Nested Algorithm")]
+        public void NestedMappingTest()
+        {
+            var inputEntity = new NestedOriginDTO { Name = "NestedTest", NestedDTO = new NestedSubOriginDTO { Number = 100 } };
+            Stopwatch timewatch = new Stopwatch();
+            for (var i = 0; i < 20; i++)
+            {
+                timewatch.Start();
+                var mapper = MapperManager.Instance.GetMapper<NestedOriginDTO, NestedDestinationDTO>();
+                var destination = mapper.Map(inputEntity) as NestedDestinationDTO;
+                timewatch.Stop();
+                Trace.WriteLine(String.Format("Input Entity: {0}", inputEntity.ToString()));
+                Trace.WriteLine(String.Format("Output Entity: {0}", destination.ToString()));
+                Trace.WriteLine(String.Format("Iteration {0} Time performed {1}", i + 1, timewatch.ElapsedMilliseconds));
+                timewatch.Reset();
+            }   
+        }
     }
-
+    
     #region Simple DTOs
 
     public class OriginDTO
@@ -105,6 +120,53 @@ namespace DynamicMapper.UnitTest
             return String.Format("Value1 = {0}, Value2 = {1}, Value3 = {2}, Value4 = {3}, Value5 = {4}", Value1, Value2, Value3, Value4, Value5);
         }
     }
+
+    #endregion
+
+    #region Nested DTOs
+
+    public class NestedOriginDTO
+    {
+        public string Name { get; set; }
+        public NestedSubOriginDTO NestedDTO { get; set; }
+
+        public override string ToString()
+        {
+            return String.Format("Name = {0}, NestedDTO = [{1}]", this.Name, this.NestedDTO.ToString());
+        } 
+    }
+
+    public class NestedDestinationDTO
+    {
+        public string Name { get; set; }
+        public NestedSubDestinationDTO NestedDTO { get; set; }
+
+        public override string ToString()
+        {
+            return String.Format("Name = {0}, NestedDTO = [{1}]", this.Name, this.NestedDTO.ToString());
+        } 
+    }
+
+    public class NestedSubOriginDTO
+    {
+        public int Number { get; set; }
+
+        public override string ToString()
+        {
+ 	         return String.Format("Number = {0}", this.Number);
+        }
+    }
+
+    public class NestedSubDestinationDTO
+    {
+        public int Number { get; set; }
+
+        public override string ToString()
+        {
+            return String.Format("Number = {0}", this.Number);
+        }
+    }
+
 
     #endregion
 

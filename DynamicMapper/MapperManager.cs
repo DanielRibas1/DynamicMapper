@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using DynamicMapper.Exceptions;
 using DynamicMapper.Interfaces;
 using DynamicMapper.MapperMaker;
 using DynamicMapper.MapperStorage;
@@ -53,9 +54,16 @@ namespace DynamicMapper
         private object InstanciateType<TInput, TOutput>(Type mapper)
         {
             if (mapper == null)
-                throw new Exception();
-            var instance = Activator.CreateInstance(mapper.MakeGenericType(typeof(TInput), typeof(TOutput)));
-            return instance;
+                throw new ArgumentNullException("mapper");
+            try
+            {
+                var instance = Activator.CreateInstance(mapper.MakeGenericType(typeof(TInput), typeof(TOutput)));
+                return instance;
+            }
+            catch (Exception ex)
+            {
+                throw new MapperInstanciateException(mapper, ex);
+            }
         }
 
         #region Key Maker

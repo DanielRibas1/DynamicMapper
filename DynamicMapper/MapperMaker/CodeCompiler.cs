@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using DynamicMapper.Exceptions;
 using Microsoft.CSharp;
 
 namespace DynamicMapper.MapperMaker
@@ -42,7 +43,6 @@ namespace DynamicMapper.MapperMaker
             var outputWriter = new IndentedTextWriter(new StreamWriter(debugSourceFile, false), "   ");
             provider.GenerateCodeFromCompileUnit(codeUnit, outputWriter, codeOptions);
             outputWriter.Close();
-
 #else
             options.IncludeDebugInformation = false;
 #endif
@@ -56,7 +56,7 @@ namespace DynamicMapper.MapperMaker
 
             var compileResult = provider.CompileAssemblyFromDom(options, codeUnit);
             if (compileResult.Errors.HasErrors)
-                throw new Exception();
+                throw new DynamicCompileException(options.OutputAssembly, compileResult.Errors);
             return compileResult;
         }
 

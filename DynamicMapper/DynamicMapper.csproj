@@ -40,6 +40,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Exceptions\COMObjectCastException.cs" />
+    <Compile Include="Exceptions\DynamicCompileException.cs" />
+    <Compile Include="Exceptions\ForbiddenTypeCastException.cs" />
+    <Compile Include="Exceptions\MapperInstanciateException.cs" />
+    <Compile Include="Exceptions\MethodsMappingGenerationExcepetion.cs" />
     <Compile Include="Interfaces\IMapper.cs" />
     <Compile Include="Interfaces\ITypeMapper.cs" />
     <Compile Include="MapperMaker\CodeCompiler.cs" />
