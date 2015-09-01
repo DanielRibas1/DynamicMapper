@@ -14,13 +14,18 @@ namespace DynamicMapper
     {
         #region Singleton Implementation
 
+        private static object _creationLock = new object();
         private static MapperManager _instance;
         public static MapperManager Instance
         {
             get
             {
                 if (_instance == null)
-                    _instance = new MapperManager();
+                    lock(_creationLock)      
+                    {
+                        if (_instance == null)                        
+                            _instance = new MapperManager();   
+                    }
                 return _instance;
             }
         }
@@ -28,26 +33,34 @@ namespace DynamicMapper
         private MapperManager() 
         {
             _store = new TypedMapperStore();
+            _locks = new Dictionary<MapperKey, object>();
         }
 
         #endregion
 
-        private TypedMapperStore _store;
+        private TypedMapperStore _store;        
+        private Dictionary<MapperKey, object> _locks;
+        private object _lockMakerlock = new object();
 
         public ITypeMapper<TInput, TOutput> GetMapper<TInput, TOutput>()
         {
-            Type mapperType;
-            var key = MakeKey<TInput, TOutput>();
-            if (_store.Contains(key))
+            Type mapperType = null;var key = MakeKey<TInput, TOutput>();
+            var xlock = GetLock(key);
+            lock (xlock)
             {
-                mapperType = _store.Get<TInput, TOutput>(key);
+                if (_store.Contains(key))
+                {                
+                    mapperType = _store.Get<TInput, TOutput>(key);                
+                }            
+                else
+                {               
+                    var generator = new MapperTypeGenerator<TInput, TOutput>();
+                    mapperType = generator.Make();
+                    _store.Put(key, mapperType);                   
+                }
             }
-            else
-            {
-                var generator = new MapperTypeGenerator<TInput, TOutput>();
-                mapperType = generator.Make();
-                _store.Put(key, mapperType);                
-            }
+            if (mapperType == null)
+                throw new Exception();
             return this.InstanciateType<TInput, TOutput>(mapperType) as ITypeMapper<TInput, TOutput>;
         }
 
@@ -63,6 +76,20 @@ namespace DynamicMapper
             catch (Exception ex)
             {
                 throw new MapperInstanciateException(mapper, ex);
+            }
+        }
+
+        private object GetLock(MapperKey key)
+        {
+            lock (_lockMakerlock)
+            {
+                if (!_locks.ContainsKey(key))
+                {
+                    var xlock = new object();
+                    _locks.Add(key, xlock);
+                    return xlock;
+                }
+                return _locks[key];
             }
         }
 

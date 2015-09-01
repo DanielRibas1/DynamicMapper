@@ -40,9 +40,11 @@ namespace DynamicMapper.MapperMaker
             options.IncludeDebugInformation = true;
             string debugSourceFile = name + "_DebugCodeFile.cs";
             var codeOptions = new CodeGeneratorOptions();
-            var outputWriter = new IndentedTextWriter(new StreamWriter(debugSourceFile, false), "   ");
-            provider.GenerateCodeFromCompileUnit(codeUnit, outputWriter, codeOptions);
-            outputWriter.Close();
+            using (var outputWriter = new IndentedTextWriter(new StreamWriter(debugSourceFile, false), "   "))
+            {
+                provider.GenerateCodeFromCompileUnit(codeUnit, outputWriter, codeOptions);
+                outputWriter.Close();
+            }
 #else
             options.IncludeDebugInformation = false;
 #endif
