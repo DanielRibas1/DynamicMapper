@@ -47,25 +47,7 @@ namespace DynamicMapper.MapperMaker.Factories
             var entryParamReference = new CodeVariableReferenceExpression(ENTRY);
             method.ReturnType = new CodeTypeReference(returnType);
             return method;
-        }
-
-        private CodeVariableReferenceExpression SetNewDeclaration(CodeMemberMethod method, Type varType, string varName)
-        {
-            method.Statements.Add(new CodeVariableDeclarationStatement(varType, varName));
-            var reference = new CodeVariableReferenceExpression(varName);
-            method.UserData[varName] = reference;
-            return reference;
-        }
-
-        private void SetActivatorExpresion(CodeMemberMethod method, CodeVariableReferenceExpression assignVar)
-        {
-            var activatorReference = new CodeMethodReferenceExpression(new CodeTypeReferenceExpression(typeof(System.Activator)), "CreateInstance");
-            activatorReference.TypeArguments.Add(method.ReturnType);
-            method.Statements.Add(
-                new CodeAssignStatement(
-                    assignVar, 
-                    new CodeMethodInvokeExpression(activatorReference)));
-        }
+        }       
 
         private CodeMemberMethod MakeMethod(string name, Type input, Type output)
         {
@@ -73,14 +55,14 @@ namespace DynamicMapper.MapperMaker.Factories
             var method = this.MakeBody(name, entryParamDeclaration, output);
             method.Name = name;
             var entryParam = new CodeVariableReferenceExpression(ENTRY);
-            var outputVar = this.SetNewDeclaration(method, output, OUTPUT);             
-            this.SetActivatorExpresion(method, outputVar);
+            var outputVar = this.CreateNewDeclaration(method, output, OUTPUT);
+            method.Statements.Add(this.CreateActivatorExpresion(method.ReturnType, outputVar));
             method.Statements.AddRange(this.MakeMapAssignations(input, output, outputVar, entryParam));            
             method.Statements.Add(new CodeMethodReturnStatement(outputVar));
             return method;
         }
 
-        private CodeAssignStatement[] MakeMapAssignations(Type input, Type output, CodeVariableReferenceExpression outputVar, CodeVariableReferenceExpression entryParam)
+        private CodeStatementCollection MakeMapAssignations(Type input, Type output, CodeExpression outputVar, CodeExpression entryParam)
         {
             return AreSymetricClasses(input, output) ?
                     this.MakeAssignsForSymetric(input, outputVar, entryParam) :
@@ -118,17 +100,38 @@ namespace DynamicMapper.MapperMaker.Factories
         /// <param name="entryParamReference">Reference to entry code parameter</param>
         /// <returns>Collection of assign statments</returns>
         /// <remarks>This algorithm will only works if the input and the ouput type has the same number of properties and the same types for each other</remarks>
-        private CodeAssignStatement[] MakeAssignsForSymetric(Type mapType, CodeVariableReferenceExpression outputVarRef, CodeVariableReferenceExpression entryParamReference)
+        private CodeStatementCollection MakeAssignsForSymetric(Type mapType, CodeExpression outputVarRef, CodeExpression entryParamReference)
         {
             var inputProperties = mapType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-            var result = new CodeAssignStatement[inputProperties.Length];
+            var result = new CodeStatementCollection();
             for (var i = 0; i < inputProperties.Length; i++)
             {
                 var propertyInfo = inputProperties[i];
-                var propertyAssignStatement = new CodeAssignStatement(
-                    new CodePropertyReferenceExpression(outputVarRef, propertyInfo.Name),
-                    new CodePropertyReferenceExpression(entryParamReference, propertyInfo.Name));
-                result[i] = propertyAssignStatement;
+                var inputValueRef = new CodePropertyReferenceExpression(entryParamReference, propertyInfo.Name);
+                var outputValueRef = new CodePropertyReferenceExpression(outputVarRef, propertyInfo.Name);
+                
+                if (propertyInfo.PropertyType.IsArray)
+                {
+                    result.AddRange(MakeArrayAssign(propertyInfo.PropertyType.GetElementType(), propertyInfo.PropertyType.GetElementType(), outputValueRef, inputValueRef));
+                }
+                else if (propertyInfo.PropertyType.GetInterface("IList", false) != null)
+                {
+                    result.Add(CreateActivatorExpresion(new CodeTypeReference(propertyInfo.PropertyType), outputValueRef));
+                    result.AddRange(
+                        MakeCollectionAssign(
+                        propertyInfo.PropertyType.GetGenericArguments().First(), 
+                        propertyInfo.PropertyType.GetGenericArguments().First(), 
+                        outputValueRef, 
+                        inputValueRef,
+                        new CodePropertyReferenceExpression(inputValueRef, "Count")));                        
+                }                
+                else
+                {
+                    var propertyAssignStatement = new CodeAssignStatement(
+                        outputValueRef,
+                        inputValueRef);
+                    result.Add(propertyAssignStatement);
+                }
             }
             return result;
         }
@@ -152,67 +155,91 @@ namespace DynamicMapper.MapperMaker.Factories
         /// <param name="outputVarRef">Reference to output code variable</param>
         /// <param name="entryParamReference">Reference to entry code parameter</param>
         /// <returns>Collection of assign statments</returns>
-        private CodeAssignStatement[] MakeAssignsForAsymetric(Type input, Type output, CodeVariableReferenceExpression outputVarRef, CodeVariableReferenceExpression entryParamReference)
+        private CodeStatementCollection MakeAssignsForAsymetric(Type input, Type output, CodeExpression outputVarRef, CodeExpression entryParamReference)
         {
             var outputProperties = output.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-            var result = new List<CodeAssignStatement>();
+            var result = new CodeStatementCollection();
 
             for (var i = 0; i < outputProperties.Length; i++)
-            {
-                CodeAssignStatement propertyAssignStatement = null;
+            {        
                 var outputProperty = outputProperties[i];
                 var inputProperty = input.GetProperty(outputProperty.Name, BindingFlags.Public | BindingFlags.Instance);
                 if (inputProperty == null)
                     continue;                
                 CheckForbiddenTypes(inputProperty);
-                if (inputProperty.PropertyType.Equals(outputProperty.PropertyType))
+
+                var inputValueRef = new CodePropertyReferenceExpression(entryParamReference, inputProperty.Name);
+                var outputValueRef = new CodePropertyReferenceExpression(outputVarRef, outputProperty.Name);    
+                
+                if (inputProperty.PropertyType.IsArray)
                 {
-                    propertyAssignStatement = new CodeAssignStatement(
-                        new CodePropertyReferenceExpression(outputVarRef, outputProperty.Name),
-                        new CodePropertyReferenceExpression(entryParamReference, inputProperty.Name));
+                    if (!outputProperty.PropertyType.IsArray)
+                    {
+                        throw new MissmatchArrayAssignException(inputProperty.PropertyType, outputProperty.PropertyType, inputProperty.Name, input);
+                    }
+                    result.AddRange(MakeArrayAssign(inputProperty.PropertyType.GetElementType(), outputProperty.PropertyType.GetElementType(), outputValueRef, inputValueRef));
+                }
+                else if (inputProperty.PropertyType.GetInterface("IList", false) != null)
+                {
+                    if (outputProperty.PropertyType.GetInterface("IList", false) == null)
+                    {
+                        throw new MissmatchArrayAssignException(inputProperty.PropertyType.GetGenericArguments().First(), outputProperty.PropertyType.GetGenericArguments().First(), inputProperty.Name, input);
+                    }
+                    result.Add(CreateActivatorExpresion(new CodeTypeReference(outputProperty.PropertyType), outputValueRef));
+                    result.AddRange(
+                        MakeCollectionAssign(
+                        inputProperty.PropertyType, 
+                        outputProperty.PropertyType, 
+                        outputValueRef, 
+                        inputValueRef,
+                        new CodePropertyReferenceExpression(inputValueRef, "Count")));                            
+                }      
+                else if (inputProperty.PropertyType.Equals(outputProperty.PropertyType))
+                {
+                    result.Add(new CodeAssignStatement(
+                        outputValueRef,
+                        inputValueRef));
                 }
                 else
                 {
                     if (outputProperty.PropertyType == typeof(string))
                     {
-                        propertyAssignStatement = new CodeAssignStatement(
-                        new CodePropertyReferenceExpression(outputVarRef, outputProperty.Name),
+                        result.Add(new CodeAssignStatement(
+                        outputValueRef,
                         new CodeMethodInvokeExpression(
-                            new CodePropertyReferenceExpression(entryParamReference, inputProperty.Name),
-                            "ToString"));
+                            inputValueRef,
+                            "ToString")));
                     }
                     else if (outputProperty.PropertyType.IsCastableTo(inputProperty.PropertyType,  false))
                     {
-                        propertyAssignStatement = new CodeAssignStatement(
-                            new CodePropertyReferenceExpression(outputVarRef, outputProperty.Name),
+                        result.Add(new CodeAssignStatement(
+                            outputValueRef,
                             new CodeCastExpression(
                                 new CodeTypeReference(outputProperty.PropertyType),
-                                new CodePropertyReferenceExpression(entryParamReference, inputProperty.Name)));
+                                inputValueRef)));
                     }
                     else if (inputProperty.PropertyType.IsEnum && outputProperty.PropertyType.IsCastableTo(Enum.GetUnderlyingType(inputProperty.PropertyType), false))
                     {
-                        propertyAssignStatement = new CodeAssignStatement(
-                            new CodePropertyReferenceExpression(outputVarRef, outputProperty.Name),
+                        result.Add(new CodeAssignStatement(
+                            outputValueRef,
                             new CodeCastExpression(
                                 new CodeTypeReference(Enum.GetUnderlyingType(inputProperty.PropertyType)),
-                                new CodePropertyReferenceExpression(entryParamReference, inputProperty.Name)));
+                                inputValueRef)));
                     }
                     else
                     {                        
                         var innerMethodName = "To" + inputProperty.PropertyType.Name;
                         var innerMethod = this.MakeMethod(innerMethodName, inputProperty.PropertyType, outputProperty.PropertyType);
                         _recursiveMethods.Add(innerMethod);
-                        propertyAssignStatement = new CodeAssignStatement(
-                            new CodePropertyReferenceExpression(outputVarRef, outputProperty.Name),
+                        result.Add(new CodeAssignStatement(
+                            outputValueRef,
                             new CodeMethodInvokeExpression(
-                                new CodeMethodReferenceExpression(null, innerMethodName),                                
-                                new CodePropertyReferenceExpression(entryParamReference, inputProperty.Name)));
+                                new CodeMethodReferenceExpression(null, innerMethodName),
+                                inputValueRef)));
                     }
-                }
-                if (propertyAssignStatement != null)
-                    result.Add(propertyAssignStatement);
+                }                
             }
-            return result.ToArray();
+            return result;
         }
 
         private void CheckForbiddenTypes(PropertyInfo inputProperty)
@@ -244,5 +271,68 @@ namespace DynamicMapper.MapperMaker.Factories
         }
 
         #endregion
+
+        private CodeVariableReferenceExpression CreateNewDeclaration(CodeMemberMethod method, Type varType, string varName)
+        {
+            method.Statements.Add(new CodeVariableDeclarationStatement(varType, varName));
+            var reference = new CodeVariableReferenceExpression(varName);
+            method.UserData[varName] = reference;
+            return reference;
+        }
+
+        private CodeAssignStatement CreateActivatorExpresion(CodeTypeReference activatorType, CodeExpression assignVar)
+        {
+            var activatorReference = new CodeMethodReferenceExpression(new CodeTypeReferenceExpression(typeof(System.Activator)), "CreateInstance");
+            activatorReference.TypeArguments.Add(activatorType);
+            return
+                new CodeAssignStatement(
+                    assignVar,
+                    new CodeMethodInvokeExpression(activatorReference));
+        }
+
+        private CodeStatementCollection MakeArrayAssign(Type inputChildType, Type outputChildType, CodeExpression outputValueRef, CodeExpression inputValueRef)
+        {
+            var inputArraySize = new CodePropertyReferenceExpression(inputValueRef, "Length");
+            var arrayInit = new CodeAssignStatement(outputValueRef, new CodeArrayCreateExpression(outputChildType, inputArraySize));
+            var iLoopVar = new CodeVariableDeclarationStatement(typeof(int), "i", new CodePrimitiveExpression(0));
+            var iLoopVarRef = new CodeVariableReferenceExpression("i");
+            
+            var result = new CodeStatementCollection();
+            result.Add(iLoopVar);
+            result.Add(arrayInit);
+
+            var forLoopAssign = new CodeIterationStatement(
+                new CodeAssignStatement(iLoopVarRef, new CodePrimitiveExpression(0)),
+                new CodeBinaryOperatorExpression(iLoopVarRef, CodeBinaryOperatorType.LessThan, inputArraySize),
+                new CodeAssignStatement(iLoopVarRef, new CodeBinaryOperatorExpression(iLoopVarRef, CodeBinaryOperatorType.Add, new CodePrimitiveExpression(1))));  
+            forLoopAssign.Statements.Add(new CodeAssignStatement(new CodeArrayIndexerExpression(outputValueRef, iLoopVarRef), new CodeArrayIndexerExpression(inputValueRef, iLoopVarRef)));
+            result.Add(forLoopAssign);
+            return result;
+        }
+
+        private CodeStatementCollection MakeCollectionAssign(Type inputChildType, Type outputChildType, CodeExpression outputValueRef, CodeExpression inputValueRef, CodeExpression collectionLength)
+        {            
+            var iLoopVar = new CodeVariableDeclarationStatement(typeof(int), "i", new CodePrimitiveExpression(0));
+            var iLoopVarRef = new CodeVariableReferenceExpression("i");
+            var innerAssign = new CodeStatementCollection(); 
+
+            var forLoopAssign = new CodeIterationStatement(
+                new CodeAssignStatement(iLoopVarRef, new CodePrimitiveExpression(0)),
+                new CodeBinaryOperatorExpression(iLoopVarRef, CodeBinaryOperatorType.LessThan, collectionLength),
+                new CodeAssignStatement(iLoopVarRef, new CodeBinaryOperatorExpression(iLoopVarRef, CodeBinaryOperatorType.Add, new CodePrimitiveExpression(1))));  
+
+            if (inputChildType.IsPrimitive || inputChildType == typeof(string))
+            {
+                forLoopAssign.Statements.Add(new CodeMethodInvokeExpression(outputValueRef, "Add", new CodeArrayIndexerExpression(inputValueRef, iLoopVarRef)));                   
+            }
+            else
+            {
+                forLoopAssign.Statements.AddRange(MakeMapAssignations(inputChildType, outputChildType,
+                    new CodeArrayIndexerExpression(outputValueRef, iLoopVarRef),
+                    new CodeArrayIndexerExpression(inputValueRef, iLoopVarRef)));
+            }           
+           
+            return new CodeStatementCollection { iLoopVar, forLoopAssign };           
+        }
     }
 }

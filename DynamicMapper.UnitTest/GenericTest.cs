@@ -3,12 +3,26 @@ using System.Diagnostics;
 using System.Reflection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Threading.Tasks;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 
 namespace DynamicMapper.UnitTest
 {
     [TestClass]
-    public class GenericTest
-    {        
+    public class GenericTest : BaseTest
+    {     
+        [TestInitialize]
+        public void TestInitialize()
+        {
+            base.TraceResults = new ConcurrentDictionary<long, IList<string>>();
+        }
+
+        [TestCleanup]
+        public void TestCleanup()
+        {
+            base.PrintTraces();
+        }
+
         [TestMethod]
         [TestCategory("Symetric Algorithm")]
         public void SymetricMappingTest()
@@ -16,15 +30,13 @@ namespace DynamicMapper.UnitTest
             var inputEntity = new OriginDTO { Value1 = "Test1", Value2 = "Test2", Value3 = DateTime.Now, Value4 = 6547899d, Value5 = int.MaxValue };
             Stopwatch timewatch = new Stopwatch();
             Trace.WriteLine(String.Format("Start Test {0}", DateTime.Now));
-            Parallel.For(0, 200, (i) =>
+            Parallel.For(0, _iterationsRun, _parallelOptions, (i) =>
             {
                 timewatch.Start();
                 var mapper = MapperManager.Instance.GetMapper<OriginDTO, DestinationDTO>();
-                var destination = mapper.Map(inputEntity) as DestinationDTO;
+                var destination = mapper.Map(inputEntity) as DestinationDTO;                
                 timewatch.Stop();
-                Trace.WriteLine(String.Format("Input Entity: {0}", inputEntity.ToString()));
-                Trace.WriteLine(String.Format("Output Entity: {0}", destination.ToString()));
-                Trace.WriteLine(String.Format("Iteration {0} Time performed {1}", i + 1, timewatch.ElapsedMilliseconds));
+                StoreTraces(inputEntity.ToString(), destination.ToString(), i, _iterationsRun, timewatch.ElapsedMilliseconds);
                 timewatch.Reset();
             });
         }
@@ -36,15 +48,13 @@ namespace DynamicMapper.UnitTest
             var inputEntity = new AsymOriginDTO { Value1 = "Test1", Value2 = DateTime.Now, Value3 = DateTime.MaxValue, Value4 = 6547899m, Value5 = EnumDTO.Second };
             Stopwatch timewatch = new Stopwatch();
             Trace.WriteLine(String.Format("Start Test {0}", DateTime.Now));
-            Parallel.For(0, 200, (i) =>
+            Parallel.For(0, _iterationsRun, _parallelOptions, (i) =>
             {
                 timewatch.Start();
                 var mapper = MapperManager.Instance.GetMapper<AsymOriginDTO, DestinationDTO>();
                 var destination = mapper.Map(inputEntity) as DestinationDTO;
                 timewatch.Stop();
-                Trace.WriteLine(String.Format("Input Entity: {0}", inputEntity.ToString()));
-                Trace.WriteLine(String.Format("Output Entity: {0}", destination.ToString()));
-                Trace.WriteLine(String.Format("Iteration {0} Time performed {1}", i + 1, timewatch.ElapsedMilliseconds));
+                StoreTraces(inputEntity.ToString(), destination.ToString(), i, _iterationsRun, timewatch.ElapsedMilliseconds);
                 timewatch.Reset();
             });
         }
@@ -56,15 +66,13 @@ namespace DynamicMapper.UnitTest
             var inputEntity = new NestedOriginDTO { Name = "NestedTest", NestedDTO = new NestedSubOriginDTO { Number = 100 } };
             Stopwatch timewatch = new Stopwatch();
             Trace.WriteLine(String.Format("Start Test {0}", DateTime.Now));
-            Parallel.For(0, 200, (i) =>
+            Parallel.For(0, _iterationsRun, _parallelOptions, (i) =>
             {
                 timewatch.Start();
                 var mapper = MapperManager.Instance.GetMapper<NestedOriginDTO, NestedDestinationDTO>();
                 var destination = mapper.Map(inputEntity) as NestedDestinationDTO;
                 timewatch.Stop();
-                Trace.WriteLine(String.Format("Input Entity: {0}", inputEntity.ToString()));
-                Trace.WriteLine(String.Format("Output Entity: {0}", destination.ToString()));
-                Trace.WriteLine(String.Format("Iteration {0} Time performed {1}", i + 1, timewatch.ElapsedMilliseconds));
+                StoreTraces(inputEntity.ToString(), destination.ToString(), i, _iterationsRun, timewatch.ElapsedMilliseconds);
                 timewatch.Reset();
             });
         }        
@@ -171,6 +179,6 @@ namespace DynamicMapper.UnitTest
     }
 
 
-    #endregion
+    #endregion   
 
 }
